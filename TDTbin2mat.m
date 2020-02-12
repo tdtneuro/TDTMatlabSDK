@@ -1389,7 +1389,7 @@ if ismember(4, TYPE)
         end
         if isstruct(data.streams)
             indexC = strfind(fields(data.streams), sevNames{ii});
-            bFound = isempty(find(cellfun('isempty',indexC), 1));
+            bFound = ~all(cellfun('isempty',indexC));
         else
             bFound = 0;
         end
