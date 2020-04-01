@@ -775,6 +775,24 @@ if ~useOutsideHeaders
             end
         end
     end
+    
+    % fix secondary epoc offsets
+    if ~isempty(fieldnames(blockNotes))
+        for ii = 1:numel(epocs.name)
+            if strcmp(epocs.type{ii}, 'onset')
+                currentName = epocs.name{ii};
+                varName = fixVarName(currentName);
+                [lia, loc] = ismember(headerStruct.stores.(varName).name, {blockNotes(:).StoreName});
+                nnn = blockNotes(loc);
+                if ~isempty(strfind(nnn.HeadName, '|'))
+                    primary = fixVarName(nnn.HeadName(end-3:end));
+                    if VERBOSE, fprintf('%s is secondary epoc of %s\n', currentName, primary), end
+                    headerStruct.stores.(varName).offset = headerStruct.stores.(primary).offset;
+                end
+            end
+        end
+    end
+    
     clear epocs;
     
     % if there is a custom sort name but this store ID isn't included, ignore it altogether
