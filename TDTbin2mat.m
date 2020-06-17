@@ -37,9 +37,9 @@ function data = TDTbin2mat(BLOCK_PATH, varargin)
 %                       codes for snippets, no waveform data (default = false)
 %      'STORE'      string, specify a single store to extract
 %                   cell of strings, specify cell arrow of stores to extract
-%      'CHANNEL'    integer, choose a single channel, to extract from
-%                       stream or snippet events. Default is 0, to extract
-%                       all channels.
+%      'CHANNEL'    integer or array, choose a single channel or array of
+%                       channels to extract from stream or snippet events
+%                       Default is 0, to extract all channels.
 %      'BITWISE'    string, specify an epoc store or scalar store that 
 %                       contains individual bits packed into a 32-bit 
 %                       integer. Onsets/offsets from individual bits will
@@ -783,11 +783,13 @@ if ~useOutsideHeaders
                 currentName = epocs.name{ii};
                 varName = fixVarName(currentName);
                 [lia, loc] = ismember(headerStruct.stores.(varName).name, {blockNotes(:).StoreName});
-                nnn = blockNotes(loc);
-                if ~isempty(strfind(nnn.HeadName, '|'))
-                    primary = fixVarName(nnn.HeadName(end-3:end));
-                    if VERBOSE, fprintf('%s is secondary epoc of %s\n', currentName, primary), end
-                    headerStruct.stores.(varName).offset = headerStruct.stores.(primary).offset;
+                if lia
+                    nnn = blockNotes(loc);
+                    if ~isempty(strfind(nnn.HeadName, '|'))
+                        primary = fixVarName(nnn.HeadName(end-3:end));
+                        if VERBOSE, fprintf('%s is secondary epoc of %s\n', currentName, primary), end
+                        headerStruct.stores.(varName).offset = headerStruct.stores.(primary).offset;
+                    end
                 end
             end
         end
@@ -1123,22 +1125,18 @@ for ii = 1:numel(storeNames)
         headerStruct.stores.(currentName).name = currentName;
         headerStruct.stores.(currentName).fs = currentFreq;
         
-        if CHANNEL > 0
-            if numel(headerStruct.stores.(currentName).chan) == 1
-                if CHANNEL == headerStruct.stores.(currentName).chan
-                    % there is only one channel and we want it..
-                else
-                    error(['CHANNEL ' num2str(CHANNEL) ' not found']);
-                end
-            else
-                validInd = headerStruct.stores.(currentName).chan == CHANNEL;
-                if ~NODATA
-                    allOffsets = double(headerStruct.stores.(currentName).data(validInd));
-                end
-                headerStruct.stores.(currentName).chan = headerStruct.stores.(currentName).chan(validInd);
-                headerStruct.stores.(currentName).sortcode = headerStruct.stores.(currentName).sortcode(validInd);
-                headerStruct.stores.(currentName).ts = headerStruct.stores.(currentName).ts(validInd);
+        if ~any(CHANNEL == 0)
+            if any(~ismember(CHANNEL, headerStruct.stores.(currentName).chan))
+                % a channel we specified is not in this data set
+                error('Channel(s) %s not found in store %s', num2str(CHANNEL(~ismember(CHANNEL, headerStruct.stores.(currentName).chan))), currentName);
             end
+            validInd = ismember(headerStruct.stores.(currentName).chan, CHANNEL);
+            if ~NODATA
+                allOffsets = double(headerStruct.stores.(currentName).data(validInd));
+            end
+            headerStruct.stores.(currentName).chan = headerStruct.stores.(currentName).chan(validInd);
+            headerStruct.stores.(currentName).sortcode = headerStruct.stores.(currentName).sortcode(validInd);
+            headerStruct.stores.(currentName).ts = headerStruct.stores.(currentName).ts(validInd);
         else
             if ~NODATA
                 allOffsets = double(headerStruct.stores.(currentName).data);
@@ -1266,28 +1264,23 @@ for ii = 1:numel(storeNames)
                 if isempty(fc)
                     continue
                 end
-                if CHANNEL > 0
-                    if all(headerStruct.stores.(currentName).filteredChan{jj} == 1)
-                        % there is only one channel here, use them all
-                        validInd = 1:numel(headerStruct.stores.(currentName).filteredData{jj});
-                    else
-                        validInd = fc == CHANNEL;
-                        if ~any(validInd)
-                            error('Channel %d not found in store %s', CHANNEL, currentName);
-                        end
-                        headerStruct.stores.(currentName).filteredChan{jj} = fc(validInd);    
+                if ~any(CHANNEL == 0)
+                    validInd = ismember(fc, CHANNEL);
+                    if ~all(ismember(CHANNEL, fc))
+                        error('Channel(s) %s not found in store %s', num2str(CHANNEL(~ismember(CHANNEL, fc))), currentName);
                     end
-                    nchan = 1;
-                    chanIndex = 1;
+                    headerStruct.stores.(currentName).filteredChan{jj} = fc(validInd);
+                    fd = headerStruct.stores.(currentName).filteredData{jj};
+                    headerStruct.stores.(currentName).filteredData{jj} = fd(validInd);
+                    channels = CHANNEL;
                 else
-                    validInd = 1:numel(headerStruct.stores.(currentName).filteredData{jj});
-                    nchan = double(max(fc));
-                    chanIndex = ones(1,nchan);
+                    channels = 1:max(fc);
                 end
+                nchan = length(channels);  % nchan = double(max(fc));
+                chanIndex = ones(1,nchan);
                 
                 fc = headerStruct.stores.(currentName).filteredChan{jj};
                 theseOffsets = double(headerStruct.stores.(currentName).filteredData{jj});
-                theseOffsets = theseOffsets(validInd);
                 
                 % preallocate data array
                 npts = (currentSize-10) * 4/sz;
@@ -1333,35 +1326,24 @@ for ii = 1:numel(storeNames)
                     for kk = 1:numel(relativeOffsets)
                         if nchan > 1
                             chan = fc(channelOffset);
+                            % map big array channel number into channels array
+                            chan = find(chan == channels);
                         else
                             chan = 1;
                         end
                         channelOffset = channelOffset + 1;
-                        if CHANNEL > 0
-                            if isempty(find((ind(kk,:) <= numel(tevData)),1))
-                                if ~foundEmpty
-                                    warning('data missing from TEV file for STORE:%s CHANNEL:%d TIME:%.2fs', currentName, chan, T1 + chanIndex / headerStruct.stores.(currentName).fs)
-                                    foundEmpty = true;
-                                end
-                                chanIndex = chanIndex + npts;
-                                continue
+                        
+                        if isempty(find((ind(kk,:) <= numel(tevData)),1))
+                            if ~foundEmpty
+                                warning('data missing from TEV file for STORE:%s CHANNEL:%d TIME:%.2fs', currentName, chan, T1 + chanIndex(chan) / headerStruct.stores.(currentName).fs)
+                                foundEmpty = true;
                             end
-                            foundEmpty = false;
-                            headerStruct.stores.(currentName).data{jj}(1, chanIndex:(chanIndex + npts - 1)) = tevData(ind(kk,:))';
-                            chanIndex = chanIndex + npts;
-                        else
-                            if isempty(find((ind(kk,:) <= numel(tevData)),1))
-                                if ~foundEmpty
-                                    warning('data missing from TEV file for STORE:%s CHANNEL:%d TIME:%.2fs', currentName, chan, T1 + chanIndex(chan) / headerStruct.stores.(currentName).fs)
-                                    foundEmpty = true;
-                                end
-                                chanIndex(chan) = chanIndex(chan) + npts;
-                                continue
-                            end
-                            foundEmpty = false;
-                            headerStruct.stores.(currentName).data{jj}(chan, chanIndex(chan):chanIndex(chan) + npts - 1) = tevData(ind(kk,:));
                             chanIndex(chan) = chanIndex(chan) + npts;
+                            continue
                         end
+                        foundEmpty = false;
+                        headerStruct.stores.(currentName).data{jj}(chan, chanIndex(chan):chanIndex(chan) + npts - 1) = tevData(ind(kk,:));
+                        chanIndex(chan) = chanIndex(chan) + npts;
                     end
                     % add data to big cell array
                 end
@@ -1382,9 +1364,7 @@ for ii = 1:numel(storeNames)
                 headerStruct.stores.(currentName).data{jj} = headerStruct.stores.(currentName).data{jj}(:,minSample:maxSample);
                 headerStruct.stores.(currentName).startTime{jj} = headerStruct.stores.(currentName).startTime{jj} + (minSample-1) / headerStruct.stores.(currentName).fs;
             end
-            if CHANNEL > 0
-                headerStruct.stores.(currentName).channel = CHANNEL;
-            end
+            headerStruct.stores.(currentName).channel = channels;
             headerStruct.stores.(currentName) = rmfield(headerStruct.stores.(currentName), 'filteredChan');
             headerStruct.stores.(currentName) = rmfield(headerStruct.stores.(currentName), 'filteredData');
         end
@@ -1413,8 +1393,15 @@ if ismember(4, TYPE)
         end
         if ~bFound
             d = SEV2mat(BLOCK_PATH, 'EVENTNAME', sevNames{ii}, 'CHANNEL', CHANNEL, 'VERBOSE', 0, 'RANGES', validTimeRange);
-            data.streams.(sevNames{ii}) = d.(sevNames{ii});
-            data.streams.(sevNames{ii}).startTime = ceil(validTimeRange(1) * d.(sevNames{ii}).fs) / d.(sevNames{ii}).fs;
+            fff = fields(d);
+            for jj = 1:numel(fff)
+                if isfield(d.(fff{jj}), 'name')
+                    if strcmp(d.(fff{jj}).name, sevNames{ii})
+                        data.streams.(fff{jj}) = d.(fff{jj});
+                        data.streams.(fff{jj}).startTime = ceil(validTimeRange(1) * d.(fff{jj}).fs) / d.(fff{jj}).fs;
+                    end
+                end
+            end
         end
     end
 end
