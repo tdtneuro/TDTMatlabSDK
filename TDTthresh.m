@@ -204,13 +204,6 @@ if TETRODE == 1
     idy = [idy;[append_y{:}]'];
 end
 
-if nchan == 1
-    data.snips.(SNIP).chan = idx(1);
-    idy = idy';
-else
-    data.snips.(SNIP).chan = int16(idx);
-end
-
 data.snips.(SNIP).ts = idy / data.snips.(SNIP).fs;
 
 if strcmpi(MODE, 'auto')
@@ -221,6 +214,13 @@ if strcmpi(MODE, 'auto')
     data.snips.(SNIP).ts(ind) = [];
     idx(ind) = [];
     idy(ind) = [];
+end
+
+if nchan == 1
+    data.snips.(SNIP).chan = idx(1);
+    idy = idy';
+else
+    data.snips.(SNIP).chan = int16(idx);
 end
 
 % everything should already be sorted by time, unless we extracted tetrodes
