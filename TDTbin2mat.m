@@ -963,6 +963,11 @@ for ii = 1:numel(storeNames)
                 if isfield(headerStruct.stores.(varName), 'filteredChan')
                     headerStruct.stores.(varName).chan = [headerStruct.stores.(varName).filteredChan{:}];
                     headerStruct.stores.(varName) = rmfield(headerStruct.stores.(varName), 'filteredChan');
+                    if strcmp(headerStruct.stores.(varName).typeStr, 'snips')
+                        if numel(unique(headerStruct.stores.(varName).chan)) == 1
+                            headerStruct.stores.(varName).chan = headerStruct.stores.(varName).chan(1);
+                        end
+                    end
                 else
                     headerStruct.stores.(varName).chan = [];
                 end
@@ -1333,7 +1338,7 @@ for ii = 1:numel(storeNames)
                         end
                         channelOffset = channelOffset + 1;
                         
-                        if isempty(find((ind(kk,:) <= numel(tevData)),1))
+                        if any(ind(kk,:) > numel(tevData))
                             if ~foundEmpty
                                 warning('data missing from TEV file for STORE:%s CHANNEL:%d TIME:%.2fs', currentName, chan, T1 + chanIndex(chan) / headerStruct.stores.(currentName).fs)
                                 foundEmpty = true;
