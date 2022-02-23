@@ -88,11 +88,6 @@ for ii = 1:2:length(varargin)
     eval([upper(varargin{ii}) '=varargin{ii+1};']);
 end
 
-% round timestamps to the nearest sample
-T1 = round((T1/2.56e-6)) * 2.56e-6;
-T2 = round((T2/2.56e-6)) * 2.56e-6;
-RANGES = round(RANGES/2.56e-6) * 2.56e-6;
-
 ALLOWED_TYPES = {'ALL','EPOCS','SNIPS','STREAMS','SCALARS'};
 
 if iscell(TYPE)
@@ -344,7 +339,7 @@ end
 s1 = datenum([1970, 1, 1, 0, 0, headerStruct.startTime]);
 s2 = datenum([1970, 1, 1, 0, 0, headerStruct.stopTime]);
 if headerStruct.stopTime > 0
-    data.info.duration = datestr(s2-s1,'HH:MM:SS');
+    data.info.duration = datestr(s2-s1,'DD:HH:MM:SS');
 end
 data.info.streamChannel = CHANNEL;
 data.info.snipChannel = CHANNEL;
@@ -641,7 +636,7 @@ if ~useOutsideHeaders
                     tsInd = validInd(noteInd);
                     noteTS = typecast(reshape(heads(5:6, tsInd), 1, []), 'double') - headerStruct.startTime;
                     % round timestamps to the nearest sample
-                    noteTS = round(noteTS/2.56e-6) * 2.56e-6;
+                    noteTS = time2sample(noteTS, 'TO_TIME', 1);
                     noteIndex = typecast(myNotes(noteInd),'uint32');
                     
                     [lia, loc] = ismember(name, notes.name);
@@ -654,7 +649,7 @@ if ~useOutsideHeaders
             if ~strcmp(storeTypes{x},'epocs')
                 headerStruct.stores.(varName).ts{loopCt} = typecast(reshape(heads(5:6, validInd), 1, []), 'double') - headerStruct.startTime;
                 % round timestamps to the nearest sample
-                headerStruct.stores.(varName).ts{loopCt} = round(headerStruct.stores.(varName).ts{loopCt}/2.56e-6) * 2.56e-6;
+                headerStruct.stores.(varName).ts{loopCt} = time2sample(headerStruct.stores.(varName).ts{loopCt}, 'TO_TIME', 1);
                 if ~NODATA || strcmp(storeTypes{x},'streams')
                     headerStruct.stores.(varName).data{loopCt} = typecast(reshape(heads(7:8, validInd), 1, []), 'double');
                 end
@@ -685,7 +680,7 @@ if ~useOutsideHeaders
                 [lia, loc] = ismember(name, epocs.name);
                 ddd = typecast(reshape(heads(5:6, validInd), 1, []), 'double') - headerStruct.startTime;
                 % round timestamps to nearest sample
-                ddd = round((ddd/2.56e-6)) * 2.56e-6;
+                ddd = time2sample(ddd, 'TO_TIME', 1);
                 epocs.ts{loc} = [epocs.ts{loc} ddd];
                 epocs.data{loc} = [epocs.data{loc} typecast(reshape(heads(7:8, validInd), 1, []), 'double')];
             end
@@ -696,7 +691,7 @@ if ~useOutsideHeaders
         
         lastTS = typecast(reshape(heads(5:6, end), 1, []), 'double') - headerStruct.startTime;
         % round timestamp to nearest sample
-        lastTS = round((lastTS/2.56e-6)) * 2.56e-6;
+        lastTS = time2sample(lastTS, 'TO_TIME', 1);
         
         % break early if time filter
         if T2 > 0 && lastTS > T2
@@ -787,8 +782,10 @@ if ~useOutsideHeaders
                     nnn = blockNotes(loc);
                     if ~isempty(strfind(nnn.HeadName, '|'))
                         primary = fixVarName(nnn.HeadName(end-3:end));
-                        if VERBOSE, fprintf('%s is secondary epoc of %s\n', currentName, primary), end
-                        headerStruct.stores.(varName).offset = headerStruct.stores.(primary).offset;
+                        if isfield(headerStruct.stores, primary)
+                            if VERBOSE, fprintf('%s is secondary epoc of %s\n', currentName, primary), end
+                            headerStruct.stores.(varName).offset = headerStruct.stores.(primary).offset;
+                        end
                     end
                 end
             end
@@ -838,11 +835,6 @@ if ~useOutsideHeaders
                 headerStruct.stores.(varName).data = typecast(headerStruct.stores.(varName).data, 'uint64');
             end
         end
-        if isfield(headerStruct.stores.(varName), 'chan')
-            if max(headerStruct.stores.(varName).chan) == 1
-                headerStruct.stores.(varName).chan = 1;
-            end
-        end
         clear heads; % don't need this anymore
     end
 end
@@ -866,9 +858,6 @@ numRanges = size(validTimeRange, 2);
 if numRanges > 0
     data.time_ranges = validTimeRange;
 end
-
-% round time ranges to nearest integer
-validTimeRange = round((validTimeRange/2.56e-6)) * 2.56e-6;
 
 % loop through all possible stores
 storeNames = fields(headerStruct.stores);
@@ -896,7 +885,7 @@ for ii = 1:numel(storeNames)
                         end_index = end_index(end);
                         % keep one prior for streams (for all channels)
                         nchan = max(headerStruct.stores.(varName).chan);
-                        if end_index - nchan > 0
+                        if end_index - nchan >= 0
                             filterInd{jj} = end_index - (double(nchan:-1:1)-1);
                             temp = headerStruct.stores.(varName).ts(filterInd{jj});
                             headerStruct.stores.(varName).startTime{jj} = temp(1);
@@ -923,11 +912,7 @@ for ii = 1:numel(storeNames)
                     headerStruct.stores.(varName).filteredTS{jj} = headerStruct.stores.(varName).ts(filterInd{jj});
                 end
                 if isfield(headerStruct.stores.(varName), 'chan')
-                    if numel(headerStruct.stores.(varName).chan) > 1
-                        headerStruct.stores.(varName).filteredChan{jj} = headerStruct.stores.(varName).chan(filterInd{jj});
-                    else
-                        headerStruct.stores.(varName).filteredChan{jj} = headerStruct.stores.(varName).chan;
-                    end
+                    headerStruct.stores.(varName).filteredChan{jj} = headerStruct.stores.(varName).chan(filterInd{jj});
                 end
                 if isfield(headerStruct.stores.(varName), 'sortcode')
                     headerStruct.stores.(varName).filteredSortcode{jj} = headerStruct.stores.(varName).sortcode(filterInd{jj});
@@ -963,11 +948,6 @@ for ii = 1:numel(storeNames)
                 if isfield(headerStruct.stores.(varName), 'filteredChan')
                     headerStruct.stores.(varName).chan = [headerStruct.stores.(varName).filteredChan{:}];
                     headerStruct.stores.(varName) = rmfield(headerStruct.stores.(varName), 'filteredChan');
-                    if strcmp(headerStruct.stores.(varName).typeStr, 'snips')
-                        if numel(unique(headerStruct.stores.(varName).chan)) == 1
-                            headerStruct.stores.(varName).chan = headerStruct.stores.(varName).chan(1);
-                        end
-                    end
                 else
                     headerStruct.stores.(varName).chan = [];
                 end
@@ -1038,10 +1018,10 @@ for ii = 1:numel(storeNames)
             headerStruct.stores.(varName).notes = struct();
             ts = notes.ts{loc};
             noteInd = notes.index{loc};
-            validInd = bitand(ts >= firstStart, ts < lastStop);
-            headerStruct.stores.(varName).notes.ts = ts(validInd);
-            headerStruct.stores.(varName).notes.index = noteInd(validInd);
-            headerStruct.stores.(varName).notes.notes = noteStr(noteInd(validInd));
+            validNoteInd = bitand(ts >= firstStart, ts < lastStop);
+            headerStruct.stores.(varName).notes.ts = ts(validNoteInd);
+            headerStruct.stores.(varName).notes.index = noteInd(validNoteInd);
+            headerStruct.stores.(varName).notes.notes = noteStr(noteInd(validNoteInd));
         end
     end
 end
@@ -1135,13 +1115,13 @@ for ii = 1:numel(storeNames)
                 % a channel we specified is not in this data set
                 error('Channel(s) %s not found in store %s', num2str(CHANNEL(~ismember(CHANNEL, headerStruct.stores.(currentName).chan))), currentName);
             end
-            validInd = ismember(headerStruct.stores.(currentName).chan, CHANNEL);
+            validSnipInd = ismember(headerStruct.stores.(currentName).chan, CHANNEL);
             if ~NODATA
-                allOffsets = double(headerStruct.stores.(currentName).data(validInd));
+                allOffsets = double(headerStruct.stores.(currentName).data(validSnipInd));
             end
-            headerStruct.stores.(currentName).chan = headerStruct.stores.(currentName).chan(validInd);
-            headerStruct.stores.(currentName).sortcode = headerStruct.stores.(currentName).sortcode(validInd);
-            headerStruct.stores.(currentName).ts = headerStruct.stores.(currentName).ts(validInd);
+            headerStruct.stores.(currentName).chan = headerStruct.stores.(currentName).chan(validSnipInd);
+            headerStruct.stores.(currentName).sortcode = headerStruct.stores.(currentName).sortcode(validSnipInd);
+            headerStruct.stores.(currentName).ts = headerStruct.stores.(currentName).ts(validSnipInd);
         else
             if ~NODATA
                 allOffsets = double(headerStruct.stores.(currentName).data);
@@ -1221,9 +1201,7 @@ for ii = 1:numel(storeNames)
             % convert cell array for output
             headerStruct.stores.(currentName).data = cat(1,headerStruct.stores.(currentName).data{:});
             totalEvents = size(headerStruct.stores.(currentName).data,1);
-            if numel(headerStruct.stores.(currentName).chan) > 1
-                headerStruct.stores.(currentName).chan = headerStruct.stores.(currentName).chan(1:totalEvents);
-            end
+            headerStruct.stores.(currentName).chan = headerStruct.stores.(currentName).chan(1:totalEvents);
             headerStruct.stores.(currentName).sortcode = headerStruct.stores.(currentName).sortcode(1:totalEvents);
             headerStruct.stores.(currentName).ts = headerStruct.stores.(currentName).ts(1:totalEvents);
         end
@@ -1248,15 +1226,17 @@ for ii = 1:numel(storeNames)
                     expectedFS = str2double(blockNotes(loc).SampleFreq);
                 end
             end
-            d = SEV2mat(BLOCK_PATH, 'EVENTNAME', currentName, 'VERBOSE', 0, 'RANGES', validTimeRange, 'FS', expectedFS, 'CHANNEL', CHANNEL);
-            detectedFS = d.(currentName).fs;
-            if expectedFS > 0 && (abs(expectedFS - detectedFS) > 1)
-                warning('Detected fs in SEV files was %.3f Hz, expected %.3f Hz. Using %.3f Hz.', detectedFS, expectedFS, expectedFS);
-                d.(currentName).fs = expectedFS;
+            d = SEV2mat(BLOCK_PATH, 'EVENTNAME', currentName, 'VERBOSE', VERBOSE, 'RANGES', validTimeRange, 'FS', expectedFS, 'CHANNEL', CHANNEL);
+            if ~isempty(d)
+                detectedFS = d.(currentName).fs;
+                if expectedFS > 0 && (abs(expectedFS - detectedFS) > 1)
+                    warning('Detected fs in SEV files was %.3f Hz, expected %.3f Hz. Using %.3f Hz.', detectedFS, expectedFS, expectedFS);
+                    d.(currentName).fs = expectedFS;
+                end
+
+                headerStruct.stores.(currentName) = d.(currentName);
+                headerStruct.stores.(currentName).startTime = time2sample(validTimeRange(1), 'FS', d.(currentName).fs, 'T1', 1, 'TO_TIME', 1);
             end
-            
-            headerStruct.stores.(currentName) = d.(currentName);
-            headerStruct.stores.(currentName).startTime = ceil(validTimeRange(1) * d.(currentName).fs) / d.(currentName).fs;
         else
             % make sure SEV files are there if they are supposed to be
             if headerStruct.stores.(currentName).ucf == 1
@@ -1270,13 +1250,13 @@ for ii = 1:numel(storeNames)
                     continue
                 end
                 if ~any(CHANNEL == 0)
-                    validInd = ismember(fc, CHANNEL);
+                    validStreamInd = ismember(fc, CHANNEL);
                     if ~all(ismember(CHANNEL, fc))
                         error('Channel(s) %s not found in store %s', num2str(CHANNEL(~ismember(CHANNEL, fc))), currentName);
                     end
-                    headerStruct.stores.(currentName).filteredChan{jj} = fc(validInd);
+                    headerStruct.stores.(currentName).filteredChan{jj} = fc(validStreamInd);
                     fd = headerStruct.stores.(currentName).filteredData{jj};
-                    headerStruct.stores.(currentName).filteredData{jj} = fd(validInd);
+                    headerStruct.stores.(currentName).filteredData{jj} = fd(validStreamInd);
                     channels = CHANNEL;
                 else
                     channels = 1:max(fc);
@@ -1358,16 +1338,14 @@ for ii = 1:numel(storeNames)
                 % index 1 is at headerStruct.stores.(currentName).startTime
                 
                 % round timestamps to the nearest sample
-                tlo_sample = double(uint64(validTimeRange(1,jj)/2.56e-6));
-                thi_sample = double(uint64(validTimeRange(2,jj)/2.56e-6));
-                td_sample = double(uint64(headerStruct.stores.(currentName).startTime{jj}/2.56e-6));
-                
-                sf = 1/(2.56e-6*headerStruct.stores.(currentName).fs);
-                minSample = max(round((tlo_sample-td_sample)/sf),0)+1;
-                maxSample = max(round((thi_sample-td_sample)/sf),0)+1;
+                td_time = time2sample(headerStruct.stores.(currentName).startTime{jj}, 'FS', headerStruct.stores.(currentName).fs, 'TO_TIME', 1);
+                lt = validTimeRange(1, jj);
+                et = validTimeRange(2, jj);
+                minSample = time2sample(lt-td_time, 'FS', headerStruct.stores.(currentName).fs, 'T1', 1) + 1;
+                maxSample = time2sample(et-td_time, 'FS', headerStruct.stores.(currentName).fs, 'T2', 1) + 1;
                 maxSample = min(maxSample, size(headerStruct.stores.(currentName).data{jj}, 2));
                 headerStruct.stores.(currentName).data{jj} = headerStruct.stores.(currentName).data{jj}(:,minSample:maxSample);
-                headerStruct.stores.(currentName).startTime{jj} = headerStruct.stores.(currentName).startTime{jj} + (minSample-1) / headerStruct.stores.(currentName).fs;
+                headerStruct.stores.(currentName).startTime{jj} = td_time + (double(minSample)-1) / headerStruct.stores.(currentName).fs;
             end
             headerStruct.stores.(currentName).channel = channels;
             headerStruct.stores.(currentName) = rmfield(headerStruct.stores.(currentName), 'filteredChan');
@@ -1397,13 +1375,15 @@ if ismember(4, TYPE)
             bFound = 0;
         end
         if ~bFound
-            d = SEV2mat(BLOCK_PATH, 'EVENTNAME', sevNames{ii}, 'CHANNEL', CHANNEL, 'VERBOSE', 0, 'RANGES', validTimeRange);
-            fff = fields(d);
-            for jj = 1:numel(fff)
-                if isfield(d.(fff{jj}), 'name')
-                    if strcmp(d.(fff{jj}).name, sevNames{ii})
-                        data.streams.(fff{jj}) = d.(fff{jj});
-                        data.streams.(fff{jj}).startTime = ceil(validTimeRange(1) * d.(fff{jj}).fs) / d.(fff{jj}).fs;
+            d = SEV2mat(BLOCK_PATH, 'EVENTNAME', sevNames{ii}, 'CHANNEL', CHANNEL, 'VERBOSE', VERBOSE, 'RANGES', validTimeRange);
+            if ~isempty(d)
+                fff = fields(d);
+                for jj = 1:numel(fff)
+                    if isfield(d.(fff{jj}), 'name')
+                        if strcmp(d.(fff{jj}).name, sevNames{ii})
+                            data.streams.(fff{jj}) = d.(fff{jj});
+                            data.streams.(fff{jj}).startTime = time2sample(validTimeRange(1), 'FS', d.(currentName).fs, 'T1', 1, 'TO_TIME', 1);
+                        end
                     end
                 end
             end
@@ -1577,7 +1557,7 @@ delimInd = strfind(s, '[USERNOTEDELIMITER]');
 try
     s = s(delimInd(2):delimInd(3));
 catch
-    warning('Bad TBK file, try running the TankRestore tool to correct. See https://www.tdt.com/technotes/#0935.htm')
+    warning('Bad TBK file, try running the TankRestore tool to correct. See https://www.tdt.com/docs/technotes/synapse/#tn0935')
     return
 end
 lines = textscan(s, '%s', 'delimiter', sprintf('\n'));

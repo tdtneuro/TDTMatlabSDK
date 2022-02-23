@@ -320,7 +320,7 @@ if ~isempty(data.snips)
         end
         
         if warning_value > 0
-            warning('time range overlap, consider a maximum time range of %.2fs', warning_value)
+            warning('time range overlap, consider a maximum time range of %.4fs', warning_value)
         end
         
         % truncate
@@ -337,10 +337,10 @@ if ~isempty(data.snips)
         else
             data.snips.(n{i}).ts = data.snips.(n{i}).ts(keep);
         end
-        % if there are any extra fields, keep those
+        % if there are any extra array fields, like sortcode, trim that array too
         fff = fieldnames(data.snips.(n{i}));
         for j = 1:numel(fff)
-            if strcmp(fff{j}, 'ts') || strcmp(fff{j}, 'name') || strcmp(fff{j}, 'data')|| strcmp(fff{j}, 'sortname') || strcmp(fff{j}, 'fs')
+            if strcmp(fff{j}, 'ts') || strcmp(fff{j}, 'data') || ischar(data.snips.(n{i}).(fff{j})) || isscalar(data.snips.(n{i}).(fff{j}))
                 continue
             end
             if numel(data.snips.(n{i}).(fff{j})) >= max(keep)

@@ -217,10 +217,10 @@ if strcmpi(MODE, 'auto')
 end
 
 if nchan == 1
-    data.snips.(SNIP).chan = idx(1);
+    data.snips.(SNIP).chan = idx .* data.streams.(STREAM).channels;
     idy = idy';
 else
-    data.snips.(SNIP).chan = int16(idx);
+    data.snips.(SNIP).chan = uint16(idx);
 end
 
 % everything should already be sorted by time, unless we extracted tetrodes
@@ -254,8 +254,14 @@ data.snips.(SNIP).data(remove,:) = [];
 data.snips.(SNIP).ts(remove) = [];
 data.snips.(SNIP).chan(remove) = [];
 
-data.snips.(SNIP).sortcode = zeros(size(data.snips.(SNIP).ts), 'int16');
+data.snips.(SNIP).sortcode = zeros(size(data.snips.(SNIP).ts), 'uint16');
 data.snips.(SNIP).name = SNIP;
 data.snips.(SNIP).sortname = '';
 
 data.snips.(SNIP).thresh = thresh;
+
+if nchan == 1
+    data.snips.(SNIP).ts = data.snips.(SNIP).ts';
+    data.snips.(SNIP).chan = data.snips.(SNIP).chan';
+    data.snips.(SNIP).sortcode = data.snips.(SNIP).sortcode';
+end
