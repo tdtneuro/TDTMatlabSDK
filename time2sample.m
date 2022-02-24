@@ -22,7 +22,6 @@ if T2
     exact = round(sample * 1e9) / 1e9;
     sample = floor(sample);
     if exact == sample
-        print("!!!!! EXACT, REDUCING BY ONE")
         sample = sample - 1;
     end
 else
