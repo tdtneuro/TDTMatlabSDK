@@ -532,14 +532,7 @@ if ~useOutsideHeaders
             end
             
             name = char(typecast(uniqueCodes(x), 'uint8'));
-            
-            % if looking for a particular store and this isn't it, skip it
-            if iscell(STORE)
-                if all(~strcmp(STORE, name)), continue; end
-            else
-                if ~strcmp(STORE, '') && ~strcmp(STORE, name), continue; end
-            end
-            
+
             bSkipDisabled = 0;
             if ~isempty(fields(blockNotes))
                 for i = 1:numel(blockNotes)
@@ -560,6 +553,19 @@ if ~useOutsideHeaders
                 continue
             end
             
+            % if looking for a particular store and this isn't it, flag it
+            % for now. need to keep looking for buddy epocs
+            skipByName = false;
+            if iscell(STORE)
+                if all(~strcmp(STORE, name))
+                    skipByName = true;
+                end
+            else
+                if ~strcmp(STORE, '') && ~strcmp(STORE, name)
+                    skipByName = true;
+                end
+            end
+
             varName = fixVarName(name);
             storeTypes{x} = code2type(heads(2,sortedCodes(x)));
             ucf{x} = checkUCF(heads(2,sortedCodes(x)));
@@ -575,10 +581,9 @@ if ~useOutsideHeaders
             else
                 bUseStore = true;
             end
+            
             if ~bUseStore
                 continue;
-            else
-                goodStoreCodes = union(goodStoreCodes, uniqueCodes(x));
             end
             
             if strcmp(storeTypes{x}, 'epocs')
@@ -586,8 +591,26 @@ if ~useOutsideHeaders
                     temp = typecast(heads(4, sortedCodes(x)), 'uint16');
                     buddy1 = char(typecast(temp(1), 'uint8'));
                     buddy2 = char(typecast(temp(2), 'uint8'));
+                    buddy = [buddy1 buddy2];
+
+                    % see if it's a relavant buddy epoc to keep
+                    if skipByName
+                        if iscell(STORE)
+                            if any(strcmp(STORE, buddy))
+                                skipByName = false;
+                            end
+                        else
+                            if strcmp(STORE, '') || strcmp(STORE, buddy)
+                                skipByName = false;
+                            end
+                        end
+                    end
+                    if skipByName
+                        continue
+                    end
+
                     epocs.name = [epocs.name {name}];
-                    epocs.buddies = [epocs.buddies {[buddy1 buddy2]}];
+                    epocs.buddies = [epocs.buddies {buddy}];
                     epocs.code = [epocs.code {uniqueCodes(x)}];
                     epocs.ts = [epocs.ts {[]}];
                     epocs.type = [epocs.type {epoc2type(heads(2,sortedCodes(x)))}];
@@ -597,7 +620,14 @@ if ~useOutsideHeaders
                     epocs.dform = [epocs.dform {heads(9,sortedCodes(x))}];
                 end
             end
-            
+
+            % skip other types of stores
+            if skipByName
+                continue
+            end
+
+            goodStoreCodes = union(goodStoreCodes, uniqueCodes(x));
+
             % add store information to store map
             if ~isfield(headerStruct.stores, varName)
                 if ~strcmp(storeTypes{x}, 'epocs')
