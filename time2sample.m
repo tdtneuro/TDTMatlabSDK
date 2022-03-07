@@ -30,7 +30,7 @@ else
     else
         sample = round(sample);
     end
-sample = uint64(sample);
+sample = double(sample);
 if TO_TIME
     sample = double(sample) / FS;
 end
