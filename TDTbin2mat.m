@@ -439,7 +439,7 @@ if ~useOutsideHeaders
                     vec(3) = currDay;
                     noteTimeRelative = etime(vec, datevec(recStart));
                     NoteTS(noteInd) = noteTimeRelative;
-                    if strcmp(noteIdentifier, 'none')
+                    if strcmp(noteIdentifier, 'none') || isempty(noteIdentifier)
                         quotes = strfind(noteLine, '"');
                         noteText = noteLine(quotes(1)+1:quotes(2)-1);
                         if numel(noteText) > 16
