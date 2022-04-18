@@ -867,6 +867,25 @@ if ~useOutsideHeaders
         end
         clear heads; % don't need this anymore
     end
+else
+    % if headers were provided, do store filter here:
+    fff = fields(headerStruct.stores);
+    for n = 1:length(fff)
+        keep = 1;
+        temp_name = headerStruct.stores.(fff{n}).name;
+        if iscell(STORE)
+            if ~any(strcmp(STORE, temp_name))
+                keep = 0;
+            end
+        else
+            if ~strcmp(STORE, '') && ~strcmp(STORE, temp_name)
+                keep = 0;
+            end
+        end
+        if ~keep
+            headerStruct.stores = rmfield(headerStruct.stores, fff{n});
+        end
+    end
 end
 
 if doHeadersOnly
@@ -1412,7 +1431,7 @@ if ismember(4, TYPE)
                     if isfield(d.(fff{jj}), 'name')
                         if strcmp(d.(fff{jj}).name, sevNames{ii})
                             data.streams.(fff{jj}) = d.(fff{jj});
-                            data.streams.(fff{jj}).startTime = time2sample(validTimeRange(1), 'FS', d.(currentName).fs, 'T1', 1, 'TO_TIME', 1);
+                            data.streams.(fff{jj}).startTime = time2sample(validTimeRange(1), 'FS', d.(fff{jj}).fs, 'T1', 1, 'TO_TIME', 1);
                         end
                     end
                 end

@@ -10,15 +10,21 @@ function [fft_data,varargout] = TDTfft(data, channel, varargin)
 %   [fft_data, fft_freq] = TDTfft(DATA, CHANNEL, 'parameter', value,...)
 %
 %   'parameter', value pairs
-%      'PLOT'       boolean, set to false to disable figure
-%      'NUMAVG'     scalar, number of subsets of data to average together
-%                   in fft_data (default = 1)
-%      'SPECPLOT'   boolean, include spectrogram plot (default = false)
-%      'FREQ'       Two-element vector, Spectral Power within specificed
-%                   frequencies will be returned instead of full scale
-%                   (default = [0 FS/2])
-%      'RESOLUTION' scalar, the frequency resolution, (default = 1)
-%      'LEGEND'     Add a string to describe the data trace
+%      'PLOT'        boolean, set to false to disable figure
+%      'NUMAVG'      scalar, number of subsets of data to average together
+%                    in fft_data (default = 1)
+%      'SPECPLOT'    boolean, include spectrogram plot (default = false)
+%      'FREQ'        Two-element vector, Spectral Power within specificed
+%                    frequencies will be returned instead of full scale
+%                    (default = [0 FS/2])
+%      'RESOLUTION'  scalar, the frequency resolution, (default = 1)
+%      'LEGEND'      Add a string to describe the data trace
+%      'FULLSPEC'    boolean, compute the full spectrogram (takes longer,
+%                    default = false)
+%      'SPECWINDOW'  scalar, spectrogram window size in seconds
+%                    (default = 0.1)
+%      'SPECOVERLAP' scalar, spectrogram window overlap, as ratio of window
+%                    size (default = 0.95 or 95% of the SPECWINDOW)
 %
 %   Example
 %      data = TDTbin2mat('C:\TDT\OpenEx\Tanks\DEMOTANK2\Block-1');
@@ -29,14 +35,17 @@ if nargout > 2
 end
 
 % defaults
-PLOT     = true;
-NUMAVG   = 1;
-SPECPLOT = false;
-FREQ = [0, data.fs/2];
-RESOLUTION = 1;
-LEGEND = false;
+PLOT        = true;
+NUMAVG      = 1;
+SPECPLOT    = false;
+FREQ        = [0, data.fs/2];
+RESOLUTION  = 1;
+LEGEND      = false;
+FULLSPEC    = false;
+SPECWINDOW  = 0.1;
+SPECOVERLAP = 0.95;
 
-VALID_PARS = {'PLOT','NUMAVG','SPECPLOT','FREQ','RESOLUTION','LEGEND'};
+VALID_PARS = {'PLOT','NUMAVG','SPECPLOT','FREQ','RESOLUTION','LEGEND','FULLSPEC','SPECWINDOW','SPECOVERLAP'};
 
 % parse varargin
 for ii = 1:2:length(varargin)
@@ -45,6 +54,9 @@ for ii = 1:2:length(varargin)
     end
     eval([upper(varargin{ii}) '=varargin{ii+1};']);
 end
+
+SPECOVERLAP = min(SPECOVERLAP, 1);
+SPECOVERLAP = max(SPECOVERLAP, 0.01);
 
 if length(FREQ) ~= 2
     error('FREQ must be a two-element vector');
@@ -142,21 +154,25 @@ else
 end
 
 % set time scale
+time_factor = 1;
 if floor(t(end)/10) == 0
     % if less than 10 seconds, use ms
-    t = t*1000;
+    time_factor = 1000;
     x_units = 'ms';
 elseif floor(t(end)/600) > 0
     % if over 10 minutes, use minutes
-    t = t/60;
+    time_factor = 1/60;
     x_units = 'min';
 else
     x_units = 's';
 end
 
+t = t*time_factor;
+
 % plot raw signal
 plot(t,y*factor)
-xlabel(['Time (' x_units ')'])
+time_label = ['Time (' x_units ')'];
+xlabel(time_label)
 x_axis = [0 t(end)];
 if max(abs(y)) > 0 && all(isfinite(y))
     if max(y*factor) < 0
@@ -213,7 +229,18 @@ axis([freq_axis y_axis]);
 
 % plot spectrogram
 if ~SPECPLOT, return, end
+
 subplot(numplots,1,4)
-spectrogram(double(y),256,240,256,Fs,'yaxis'); 
+window = round(SPECWINDOW * Fs);
+overlap = round(window * SPECOVERLAP);
+if overlap == window
+    overlap = overlap - 1;
+end
+if FULLSPEC
+    npts = round(Fs / RESOLUTION);
+else
+    npts = window;
+end
+spectrogram(double(y),window,overlap,npts,Fs,'yaxis');
 colormap('gray')
 title('Spectrogram')
