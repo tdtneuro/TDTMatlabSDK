@@ -217,7 +217,7 @@ if strcmpi(MODE, 'auto')
 end
 
 if nchan == 1
-    data.snips.(SNIP).chan = idx .* data.streams.(STREAM).channels;
+    data.snips.(SNIP).chan = uint16(idx) .* data.streams.(STREAM).channel;
     idy = idy';
 else
     data.snips.(SNIP).chan = uint16(idx);

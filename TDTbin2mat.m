@@ -180,7 +180,19 @@ if ~useOutsideHeaders
         data = SEV2mat(BLOCK_PATH, varargin{:});
         return
     elseif length(tsqList) > 1
-        error('multiple TSQ files found')
+        % filter out Mac file names and try again
+        bad_index = [];
+        for k = 1:length(tsqList)
+            if strcmp(tsqList(k).name(1:2), '._')
+                bad_index = [k bad_index];
+            end
+        end
+        for k = bad_index
+            tsqList(k) = [];
+        end
+        if length(tsqList) > 1
+            error('multiple TSQ files found')
+        end
     end
     
     cTSQ = [BLOCK_PATH tsqList(1).name];
@@ -253,7 +265,8 @@ if ismember(3, TYPE) && ~strcmp(SORTNAME, 'TankSort')
     % Block-3\sort\USERDEFINED\EventName.SortResult.
     %
     % .SortResult files contain sort codes for 1 to all channels within
-    % the selected block.  Each file starts with a 1024 byte boolean channel
+    % the selected block.  Each file starts with a 1024 byte boolean
+    % channel
     % map indicating which channel's sort codes have been saved in the file.
     % Following this map, is a sort code field that maps 1:1 with the event
     % ID for a given block.  The event ID is essentially the Nth occurance of
@@ -379,10 +392,12 @@ if ~useOutsideHeaders
     NoteText = {};
     NoteTS = [];
     bDoOnce = 1;
+    noteText = '';
     if ~isempty(noteTxtLines)
         targets = {'Experiment','Subject','User','Start','Stop'};
         NoteText = cell(numel(noteTxtLines),1);
         noteInd = 1;
+        bInNote = false;
         for n = 1:numel(noteTxtLines)
             noteLine = noteTxtLines{n};
             if isempty(noteLine)
@@ -426,36 +441,60 @@ if ~useOutsideHeaders
             % look for actual notes
             testStr = 'Note-';
             eee = length(testStr);
+            bNoteStart = false;
             if length(noteLine) >= eee + 2
                 if strcmp(noteLine(1:eee), testStr)
-                    noteInd = str2double(noteLine(strfind(noteLine,'-')+1:strfind(noteLine,':')-1));
-                    noteIdentifier = noteLine(strfind(noteLine, '[')+1:strfind(noteLine,']')-1);
-                    spaces = strfind(noteLine, ' ');
-                    noteTime = noteLine(spaces(1)+1:spaces(2)-1);
-                    noteDT = datenum(upper(noteTime), timefmt);
-                    vec = datevec(noteDT);
-                    vec(1) = currYear;
-                    vec(2) = currMonth;
-                    vec(3) = currDay;
-                    noteTimeRelative = etime(vec, datevec(recStart));
-                    NoteTS(noteInd) = noteTimeRelative;
-                    if strcmp(noteIdentifier, 'none') || isempty(noteIdentifier)
-                        quotes = strfind(noteLine, '"');
+                    bInNote = false;
+                    bNoteStart = true;
+                end
+            end
+            if bInNote
+                quotes = strfind(noteLine, '"');
+                if ~isempty(quotes)
+                    noteText = strcat(noteText, noteLine(1:quotes(1)-1));
+                    NoteText{noteInd} = noteText;
+                    bInNote = false;
+                else
+                    noteText = strcat(noteText, '\n', noteLine);
+                end
+            end
+            if bNoteStart
+                % start of new note
+                noteText = '';
+                noteInd = str2double(noteLine(strfind(noteLine,'-')+1:strfind(noteLine,':')-1));
+                noteIdentifier = noteLine(strfind(noteLine, '[')+1:strfind(noteLine,']')-1);
+                spaces = strfind(noteLine, ' ');
+                noteTime = noteLine(spaces(1)+1:spaces(2)-1);
+                noteDT = datenum(upper(noteTime), timefmt);
+                vec = datevec(noteDT);
+                vec(1) = currYear;
+                vec(2) = currMonth;
+                vec(3) = currDay;
+                noteTimeRelative = etime(vec, datevec(recStart));
+                NoteTS(noteInd) = noteTimeRelative;
+                if strcmp(noteIdentifier, 'none') || isempty(noteIdentifier)
+                    quotes = strfind(noteLine, '"');
+                    if length(quotes) > 1
                         noteText = noteLine(quotes(1)+1:quotes(2)-1);
-                        if numel(noteText) > 16
-                            if strcmp('date changed to ', noteText(1:16))
-                                disp(noteText)
-                                temp = datevec(datenum(upper(noteText(17:end)), yearfmt));
-                                currDay = temp(3);
-                                currMonth = temp(2);
-                                currYear = temp(1);
-                                NoteTS(noteInd) = -1;
-                            end
-                        end
-                        NoteText{noteInd} = noteText;
                     else
-                        NoteText{noteInd} = noteIdentifier;
-                    end            
+                        noteText = noteLine(quotes(1)+1:end);
+                        bInNote = true;
+                    end
+                    if numel(noteText) > 16
+                        if strcmp('date changed to ', noteText(1:16))
+                            disp(noteText)
+                            temp = datevec(datenum(upper(noteText(17:end)), yearfmt));
+                            currDay = temp(3);
+                            currMonth = temp(2);
+                            currYear = temp(1);
+                            NoteTS(noteInd) = -1;
+                        end
+                    end
+                    if ~bInNote
+                        NoteText{noteInd} = noteText;
+                    end
+                else
+                    NoteText{noteInd} = noteIdentifier;
                 end
             end
         end
@@ -587,28 +626,24 @@ if ~useOutsideHeaders
             end
             
             if strcmp(storeTypes{x}, 'epocs')
-                if ~ismember(name, epocs.name)
-                    temp = typecast(heads(4, sortedCodes(x)), 'uint16');
-                    buddy1 = char(typecast(temp(1), 'uint8'));
-                    buddy2 = char(typecast(temp(2), 'uint8'));
-                    buddy = [buddy1 buddy2];
-
-                    % see if it's a relavant buddy epoc to keep
-                    if skipByName
-                        if iscell(STORE)
-                            if any(strcmp(STORE, buddy))
-                                skipByName = false;
-                            end
-                        else
-                            if strcmp(STORE, '') || strcmp(STORE, buddy)
-                                skipByName = false;
-                            end
+                temp = typecast(heads(4, sortedCodes(x)), 'uint16');
+                buddy1 = char(typecast(temp(1), 'uint8'));
+                buddy2 = char(typecast(temp(2), 'uint8'));
+                buddy = [buddy1 buddy2];
+                % see if it's a relavant buddy epoc to keep
+                if skipByName
+                    if iscell(STORE)
+                        if any(strcmp(STORE, buddy))
+                            skipByName = false;
+                        end
+                    else
+                        if strcmp(STORE, '') || strcmp(STORE, buddy)
+                            skipByName = false;
                         end
                     end
-                    if skipByName
-                        continue
-                    end
-
+                end
+                if skipByName, continue, end
+                if ~ismember(name, epocs.name)
                     epocs.name = [epocs.name {name}];
                     epocs.buddies = [epocs.buddies {buddy}];
                     epocs.code = [epocs.code {uniqueCodes(x)}];
@@ -622,9 +657,7 @@ if ~useOutsideHeaders
             end
 
             % skip other types of stores
-            if skipByName
-                continue
-            end
+            if skipByName, continue, end
 
             goodStoreCodes = union(goodStoreCodes, uniqueCodes(x));
 
@@ -1388,13 +1421,14 @@ for ii = 1:numel(storeNames)
                 
                 % round timestamps to the nearest sample
                 td_time = time2sample(headerStruct.stores.(currentName).startTime{jj}, 'FS', headerStruct.stores.(currentName).fs, 'TO_TIME', 1);
-                lt = validTimeRange(1, jj);
-                et = validTimeRange(2, jj);
-                minSample = time2sample(lt-td_time, 'FS', headerStruct.stores.(currentName).fs, 'T1', 1) + 1;
-                maxSample = time2sample(et-td_time, 'FS', headerStruct.stores.(currentName).fs, 'T2', 1) + 1;
+                tdSample = time2sample(td_time, 'FS', headerStruct.stores.(currentName).fs, 'T1', 1);
+                ltSample = time2sample(validTimeRange(1, jj), 'FS', headerStruct.stores.(currentName).fs, 'T1', 1);
+                etSample = time2sample(validTimeRange(2, jj), 'FS', headerStruct.stores.(currentName).fs, 'T1', 1);
+                minSample = ltSample - tdSample + 1;
+                maxSample = etSample - tdSample;
                 maxSample = min(maxSample, size(headerStruct.stores.(currentName).data{jj}, 2));
                 headerStruct.stores.(currentName).data{jj} = headerStruct.stores.(currentName).data{jj}(:,minSample:maxSample);
-                headerStruct.stores.(currentName).startTime{jj} = td_time + (double(minSample)-1) / headerStruct.stores.(currentName).fs;
+                headerStruct.stores.(currentName).startTime{jj} = ltSample / headerStruct.stores.(currentName).fs;
             end
             headerStruct.stores.(currentName).channel = channels;
             headerStruct.stores.(currentName) = rmfield(headerStruct.stores.(currentName), 'filteredChan');

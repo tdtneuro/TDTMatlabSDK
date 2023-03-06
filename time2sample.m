@@ -25,6 +25,8 @@ if T2
         sample = sample - 1;
     end
 else
+    % drop precision beyond 1e-9
+    sample = round(sample * 1e9) / 1e9;
     if T1
         sample = ceil(sample);
     else
